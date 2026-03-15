@@ -1,0 +1,132 @@
+seed: 7
+output_root: results
+
+data:
+  use_real_if_available: true
+  real_csv_path: data/raw/air_quality.csv
+  synthetic_output_path: data/processed/synthetic_pollution_timeseries.csv
+  training_steps: 240
+  feature_columns:
+    - pm25
+    - pm10
+    - co
+    - no2
+    - temperature
+    - humidity
+    - hour_sin
+    - hour_cos
+  target_column: pm25
+  window_size: 12
+  horizon: 1
+  hotspot_centers:
+    - [25.0, 75.0]
+    - [55.0, 45.0]
+    - [80.0, 80.0]
+
+model:
+  channel_size: 32
+  num_blocks: 3
+  kernel_size: 3
+  learning_rate: 0.003
+  epochs: 12
+  batch_size: 64
+  dropout: 0.10
+  weight_decay: 0.0001
+  train_fraction: 0.70
+  val_fraction: 0.15
+
+severity:
+  pm25_thresholds:
+    normal_max: 50.0
+    warning_max: 100.0
+
+priority:
+  weights:
+    current_severity: 0.28
+    predicted_severity: 0.24
+    aoi: 0.18
+    change_rate: 0.16
+    hotspot_relevance: 0.10
+    communication_cost: 0.04
+  normalization:
+    max_aoi: 12
+    max_change_rate: 40.0
+
+network:
+  initial_energy: 0.09
+  packet_size_bits: 4000
+  control_packet_bits: 200
+  tx_energy: 5.0e-8
+  rx_energy: 5.0e-8
+  fs_energy: 1.0e-11
+  mp_energy: 1.3e-15
+  aggregation_energy: 5.0e-9
+  cluster_head_ratio: 0.12
+  radio_range_factor: 0.45
+  epoch_length: 8
+  join_weights:
+    distance: 0.55
+    energy: 0.25
+    priority: 0.20
+  predictive_ch_weights:
+    energy: 0.45
+    priority: 0.40
+    distance: 0.15
+  energy_ch_weights:
+    energy: 0.70
+    distance: 0.30
+  suppression:
+    priority_threshold: 0.42
+    aoi_threshold: 4
+    change_threshold: 8.0
+
+scenarios:
+  training_mix:
+    - normal
+    - rising_warning
+    - hazardous_spike
+    - hotspot_heavy
+  evaluation:
+    - name: normal
+      rounds: 260
+      node_count: 36
+      area_size: 100.0
+    - name: rising_warning
+      rounds: 260
+      node_count: 36
+      area_size: 100.0
+    - name: hazardous_spike
+      rounds: 260
+      node_count: 36
+      area_size: 100.0
+    - name: hotspot_heavy
+      rounds: 260
+      node_count: 36
+      area_size: 100.0
+  sensitivity:
+    - name: sensitivity_nodes_24
+      base_scenario: normal
+      rounds: 260
+      node_count: 24
+      area_size: 100.0
+    - name: sensitivity_nodes_48
+      base_scenario: normal
+      rounds: 260
+      node_count: 48
+      area_size: 100.0
+    - name: sensitivity_area_140
+      base_scenario: hotspot_heavy
+      rounds: 260
+      node_count: 36
+      area_size: 140.0
+    - name: sensitivity_energy_12
+      base_scenario: rising_warning
+      rounds: 260
+      node_count: 36
+      area_size: 100.0
+      initial_energy: 0.12
+
+protocols:
+  - standard_leach
+  - energy_aware_leach
+  - predictive_pollution_aware_leach

@@ -1,0 +1,20 @@
+{
+  "classification_metrics": {
+    "accuracy": 0.9121031746031746,
+    "f1_macro": 0.9055441358080497,
+    "precision_macro": 0.9034471288096436,
+    "recall_macro": 0.9080503490300437
+  },
+  "model_checkpoint": "results/models/tcn_regressor.pt",
+  "model_type": "tcn",
+  "network_summary_table": "results/tables/network_summary.csv",
+  "paper_summary_table": "results/tables/paper_summary_table.csv",
+  "regression_metrics": {
+    "mae": 4.033013671163529,
+    "mape": 6.019851365615193,
+    "r2": 0.9749707066298045,
+    "rmse": 5.08497044358909
+  },
+  "round_metrics_log": "results/logs/network_round_metrics.csv",
+  "seed": 7
+}
