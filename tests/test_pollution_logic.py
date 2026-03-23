@@ -51,7 +51,7 @@ class PollutionLogicTest(unittest.TestCase):
         self.assertGreater(high, low)
 
     def test_predictive_protocol_preserves_hazardous_packets(self) -> None:
-        protocol = build_protocol("predictive_pollution_aware_leach")
+        protocol = build_protocol("tcn_predictive_pollution_aware_leach")
         context = NodeRoundContext(
             node_id=1,
             current_pm25=160.0,

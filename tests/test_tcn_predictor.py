@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from src.models.tcn_predictor import PollutionTCN, PredictorBundle
+from src.models.tcn_predictor import STD_EPSILON, PollutionTCN, PredictorBundle, _stabilize_feature_std
 
 
 class TCNPredictorTest(unittest.TestCase):
@@ -34,6 +34,12 @@ class TCNPredictorTest(unittest.TestCase):
             bundle.save()
             restored = PredictorBundle.load(bundle.checkpoint_path)
             np.testing.assert_allclose(bundle.predict(windows), restored.predict(windows), rtol=1e-5, atol=1e-5)
+
+    def test_feature_std_uses_epsilon_stabilization(self) -> None:
+        feature_std = np.array([0.0, 1e-9, 1e-6, 2.5], dtype=np.float32)
+        stabilized = _stabilize_feature_std(feature_std)
+        expected = np.array([STD_EPSILON, STD_EPSILON, STD_EPSILON, 2.5], dtype=np.float32)
+        np.testing.assert_allclose(stabilized, expected)
 
 
 if __name__ == "__main__":

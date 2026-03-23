@@ -13,6 +13,9 @@ from src.metrics.evaluation import classification_metrics, regression_metrics
 from src.simulation.severity import map_pm25_to_severity
 
 
+STD_EPSILON = 1e-6
+
+
 class Chomp1d(nn.Module):
     def __init__(self, chomp_size: int) -> None:
         super().__init__()
@@ -145,6 +148,10 @@ def _make_loader(inputs: np.ndarray, targets: np.ndarray, batch_size: int, shuff
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, generator=generator if shuffle else None)
 
 
+def _stabilize_feature_std(feature_std: np.ndarray) -> np.ndarray:
+    return np.maximum(feature_std, STD_EPSILON)
+
+
 def train_tcn_regressor(
     sequence_splits: dict[str, dict[str, np.ndarray | pd.DataFrame]],
     config: dict,
@@ -166,7 +173,7 @@ def train_tcn_regressor(
 
     feature_mean = train_x.mean(axis=(0, 1))
     feature_std = train_x.std(axis=(0, 1))
-    feature_std = np.where(feature_std < 1e-6, 1.0, feature_std)
+    feature_std = _stabilize_feature_std(feature_std)
 
     def normalize(values: np.ndarray) -> np.ndarray:
         return ((values - feature_mean.reshape(1, 1, -1)) / feature_std.reshape(1, 1, -1)).astype(np.float32)

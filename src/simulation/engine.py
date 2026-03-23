@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import math
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -14,6 +13,7 @@ from src.simulation.aoi import AoITracker
 from src.simulation.priority import PriorityInputs, compute_priority_score
 from src.simulation.severity import map_pm25_to_severity
 from src.simulation.types import NodeRoundContext, NodeState
+from src.utils.naming import scenario_label
 
 
 def _distance_threshold(network_config: dict) -> float:
@@ -91,11 +91,13 @@ def _build_contexts(
     node_states: dict[int, NodeState],
     series: dict[int, dict[str, np.ndarray]],
     predictor: PredictorBundle,
+    protocol,
     scenario: ScenarioData,
     round_index: int,
     priority_config: dict,
     severity_thresholds: dict,
     aoi_tracker: AoITracker,
+    initial_energy: float,
 ) -> dict[int, NodeRoundContext]:
     active_node_ids = [node_id for node_id, state in node_states.items() if state.alive]
     windows = []
@@ -103,7 +105,7 @@ def _build_contexts(
         features = series[node_id]["features"][round_index : round_index + predictor.window_size]
         windows.append(features)
 
-    predicted_pm25 = predictor.predict(np.asarray(windows, dtype=np.float32))
+    model_predictions = predictor.predict(np.asarray(windows, dtype=np.float32))
     sink_position = (scenario.area_size / 2.0, scenario.area_size / 2.0)
     area_diagonal = math.sqrt(2.0) * scenario.area_size
 
@@ -116,7 +118,13 @@ def _build_contexts(
         change_rate = current_pm25 - previous_pm25
         distance_norm = float(np.hypot(state.x - sink_position[0], state.y - sink_position[1]) / area_diagonal)
         current_severity = int(map_pm25_to_severity(current_pm25, severity_thresholds))
-        predicted_severity = int(map_pm25_to_severity(float(predicted_pm25[idx]), severity_thresholds))
+        predicted_pm25 = float(model_predictions[idx]) if protocol.uses_prediction else current_pm25
+        predicted_severity = int(map_pm25_to_severity(predicted_pm25, severity_thresholds))
+        weight_config = dict(priority_config["weights"])
+        if not protocol.uses_prediction:
+            weight_config["predicted_severity"] = 0.0
+        if not protocol.uses_aoi_term:
+            weight_config["aoi"] = 0.0
         priority_score = compute_priority_score(
             PriorityInputs(
                 current_severity=current_severity,
@@ -126,16 +134,16 @@ def _build_contexts(
                 hotspot_relevance=float(state.hotspot_relevance),
                 communication_cost=distance_norm,
             ),
-            weight_config=priority_config["weights"],
+            weight_config=weight_config,
             normalization_config=priority_config["normalization"],
         )
         contexts[node_id] = NodeRoundContext(
             node_id=node_id,
             current_pm25=current_pm25,
-            predicted_pm25=float(predicted_pm25[idx]),
+            predicted_pm25=predicted_pm25,
             current_severity=current_severity,
             predicted_severity=predicted_severity,
-            residual_energy_ratio=float(max(state.energy, 0.0)),
+            residual_energy_ratio=float(max(state.energy, 0.0) / initial_energy),
             aoi=float(aoi_tracker.get(node_id)),
             change_rate=float(change_rate),
             hotspot_relevance=float(state.hotspot_relevance),
@@ -165,7 +173,8 @@ def run_protocol_simulation(
     config: dict,
     protocol_name: str,
     seed: int,
-) -> tuple[dict[str, float | int | str], pd.DataFrame]:
+    study_name: str = "main",
+) -> tuple[dict[str, float | int | str], pd.DataFrame, dict[str, float | int | str | bool]]:
     protocol = build_protocol(protocol_name)
     network_config = copy.deepcopy(config["network"])
     network_config.update(scenario.network_overrides)
@@ -181,10 +190,13 @@ def run_protocol_simulation(
     rng = np.random.default_rng(seed)
 
     total_generated = 0
+    total_attempted = 0
+    total_suppressed = 0
     total_delivered = 0
     total_delay = 0.0
     total_delay_count = 0
     total_hazardous = 0
+    total_hazardous_attempted = 0
     total_hazardous_delivered = 0
     total_bits_received = 0
     round_rows: list[dict[str, float | int | str]] = []
@@ -197,11 +209,13 @@ def run_protocol_simulation(
             node_states=node_states,
             series=node_series,
             predictor=predictor,
+            protocol=protocol,
             scenario=scenario,
             round_index=round_index,
             priority_config=config["priority"],
             severity_thresholds=severity_thresholds,
             aoi_tracker=aoi_tracker,
+            initial_energy=initial_energy,
         )
         if not contexts:
             break
@@ -246,9 +260,12 @@ def run_protocol_simulation(
         delivered_node_ids: set[int] = set()
         pending_forward: dict[int, list[tuple[int, int]]] = {cluster_head_id: [] for cluster_head_id in cluster_heads}
         generated_this_round = 0
+        attempted_this_round = 0
+        suppressed_this_round = 0
         delivered_this_round = 0
         delay_this_round: list[int] = []
         hazardous_total_round = 0
+        hazardous_attempted_round = 0
         hazardous_delivered_round = 0
 
         ordered_nodes = protocol.transmission_order(
@@ -260,8 +277,6 @@ def run_protocol_simulation(
             sender = node_states[node_id]
             if not sender.alive:
                 continue
-            if not protocol.should_transmit(context, network_config):
-                continue
 
             generated_this_round += 1
             total_generated += 1
@@ -269,6 +284,19 @@ def run_protocol_simulation(
             if hazardous_packet:
                 hazardous_total_round += 1
                 total_hazardous += 1
+
+            if not protocol.should_transmit(context, network_config):
+                suppressed_this_round += 1
+                total_suppressed += 1
+                if hazardous_packet:
+                    raise RuntimeError(f"Hazardous packet was suppressed for protocol {protocol.name}.")
+                continue
+
+            attempted_this_round += 1
+            total_attempted += 1
+            if hazardous_packet:
+                hazardous_attempted_round += 1
+                total_hazardous_attempted += 1
 
             cluster_head_id = sender.cluster_head_id
             if cluster_head_id is None:
@@ -326,21 +354,29 @@ def run_protocol_simulation(
         avg_residual_energy = float(sum(max(node_state.energy, 0.0) for node_state in node_states.values()) / scenario.node_count)
         round_rows.append(
             {
+                "study_name": study_name,
                 "scenario": scenario.name,
+                "scenario_label": scenario_label(scenario.name),
                 "scenario_group": scenario.scenario_group,
                 "protocol": protocol.name,
+                "protocol_label": protocol.short_name,
+                "seed": seed,
                 "round": round_index + 1,
                 "cluster_heads": len(cluster_heads),
                 "alive_nodes": alive_nodes,
                 "dead_nodes": dead_nodes,
                 "avg_residual_energy": avg_residual_energy,
                 "generated_packets": generated_this_round,
+                "attempted_packets": attempted_this_round,
+                "suppressed_packets": suppressed_this_round,
                 "delivered_packets": delivered_this_round,
                 "pdr_round": (delivered_this_round / generated_this_round) if generated_this_round else 0.0,
+                "transmission_success_round": (delivered_this_round / attempted_this_round) if attempted_this_round else 0.0,
                 "avg_delay_round": float(np.mean(delay_this_round)) if delay_this_round else 0.0,
                 "throughput_bits_round": delivered_this_round * int(network_config["packet_size_bits"]),
                 "avg_aoi": aoi_tracker.average(),
                 "hazardous_generated": hazardous_total_round,
+                "hazardous_attempted": hazardous_attempted_round,
                 "hazardous_delivered": hazardous_delivered_round,
                 "hazardous_success_round": (hazardous_delivered_round / hazardous_total_round) if hazardous_total_round else 1.0,
             }
@@ -357,9 +393,13 @@ def run_protocol_simulation(
     lnd = int(rounds_df.loc[rounds_df["dead_nodes"] >= scenario.node_count, "round"].iloc[0]) if (rounds_df["dead_nodes"] >= scenario.node_count).any() else int(rounds_df["round"].iloc[-1])
 
     summary = {
+        "study_name": study_name,
         "scenario": scenario.name,
+        "scenario_label": scenario_label(scenario.name),
         "scenario_group": scenario.scenario_group,
         "protocol": protocol.name,
+        "protocol_label": protocol.short_name,
+        "seed": seed,
         "node_count": scenario.node_count,
         "area_size": scenario.area_size,
         "initial_energy": float(network_config["initial_energy"]),
@@ -367,13 +407,60 @@ def run_protocol_simulation(
         "fnd": fnd,
         "hnd": hnd,
         "lnd": lnd,
-        "average_residual_energy": float(rounds_df["avg_residual_energy"].mean()),
+        "average_residual_energy_over_time": float(rounds_df["avg_residual_energy"].mean()),
+        "average_residual_energy_final_round": float(rounds_df["avg_residual_energy"].iloc[-1]),
         "packet_delivery_ratio": float(total_delivered / total_generated) if total_generated else 0.0,
+        "transmission_success_ratio": float(total_delivered / total_attempted) if total_attempted else 0.0,
         "end_to_end_delay": float(total_delay / total_delay_count) if total_delay_count else 0.0,
         "throughput_bits_per_round": float(total_bits_received / len(rounds_df)),
         "average_aoi": float(rounds_df["avg_aoi"].mean()),
         "hazardous_event_delivery_success_rate": float(total_hazardous_delivered / total_hazardous) if total_hazardous else 1.0,
-        "total_generated_packets": int(total_generated),
-        "total_delivered_packets": int(total_delivered),
+        "packets_generated": int(total_generated),
+        "packets_attempted": int(total_attempted),
+        "packets_suppressed": int(total_suppressed),
+        "packets_delivered": int(total_delivered),
+        "hazardous_packets_generated": int(total_hazardous),
+        "hazardous_packets_attempted": int(total_hazardous_attempted),
+        "hazardous_packets_delivered": int(total_hazardous_delivered),
     }
-    return summary, rounds_df
+    assumptions = {
+        "study_name": study_name,
+        "scenario": scenario.name,
+        "seed": seed,
+        "protocol": protocol.name,
+        "protocol_label": protocol.short_name,
+        "node_count": scenario.node_count,
+        "area_size": scenario.area_size,
+        "initial_energy": float(network_config["initial_energy"]),
+        "tx_energy": float(network_config["tx_energy"]),
+        "rx_energy": float(network_config["rx_energy"]),
+        "fs_energy": float(network_config["fs_energy"]),
+        "mp_energy": float(network_config["mp_energy"]),
+        "aggregation_energy": float(network_config["aggregation_energy"]),
+        "packet_size_bits": int(network_config["packet_size_bits"]),
+        "control_packet_bits": int(network_config["control_packet_bits"]),
+        "cluster_head_ratio": float(network_config["cluster_head_ratio"]),
+        "radio_range_factor": float(network_config["radio_range_factor"]),
+        "round_budget": int(scenario.rounds),
+        "sink_x": float(sink_position[0]),
+        "sink_y": float(sink_position[1]),
+        "scenario_name": scenario.name,
+        "severity_threshold_normal_max": float(severity_thresholds["normal_max"]),
+        "severity_threshold_warning_max": float(severity_thresholds["warning_max"]),
+        "pdr_denominator": "raw_packets_generated",
+        "delay_definition": "hop_count_to_sink",
+        "aoi_definition": "increment_per_round_reset_on_successful_delivery",
+        "sensing_schedule": "one_sample_per_alive_node_per_round",
+        "topology_seed": int(scenario.topology_seed),
+        "traffic_seed": int(scenario.traffic_seed),
+        "simulation_seed": int(seed),
+        "cluster_head_rule": protocol.cluster_head_rule,
+        "join_rule": protocol.join_rule,
+        "uses_prediction": bool(protocol.uses_prediction),
+        "uses_aoi_term": bool(protocol.uses_aoi_term),
+        "uses_suppression": bool(protocol.uses_suppression),
+        "uses_priority_scheduler": bool(protocol.uses_priority_scheduler),
+        "priority_scoring_enabled": bool(protocol.priority_scoring_enabled),
+        "suppression_description": "routine_packets_only" if protocol.uses_suppression else "disabled",
+    }
+    return summary, rounds_df, assumptions

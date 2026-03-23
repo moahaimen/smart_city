@@ -1,0 +1,19 @@
+{
+  "classification": {
+    "accuracy": 0.9121031746031746,
+    "f1_macro": 0.9055441358080497,
+    "precision_macro": 0.9034471288096436,
+    "recall_macro": 0.9080503490300437
+  },
+  "data_source": "synthetic",
+  "model_type": "tcn",
+  "regression": {
+    "mae": 4.033013671163529,
+    "mape": 6.019851365615193,
+    "r2": 0.9749707066298045,
+    "rmse": 5.08497044358909
+  },
+  "test_sequences": 5040,
+  "train_sequences": 22896,
+  "val_sequences": 4896
+}

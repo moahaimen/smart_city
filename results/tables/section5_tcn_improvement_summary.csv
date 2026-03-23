@@ -1,0 +1,12 @@
+Metric,Optimization direction,Strongest baseline,Baseline mean,TCN-PPA-LEACH mean,TCN vs strongest baseline (%)
+FND,Higher is better,EA-LEACH,114.775,235.025,104.770
+HND,Higher is better,LEACH,147.425,258.625,75.428
+LND,Higher is better,LEACH,231.600,260.000,12.263
+Avg residual energy (J),Higher is better,EA-LEACH,0.035,0.046,30.388
+Throughput (Mbits),Higher is better,LEACH,20.844,32.213,54.543
+Delivered packets,Higher is better,LEACH,5210.950,8053.175,54.543
+PDR,Higher is better,LEACH,0.973,0.878,-9.720
+Delay (hops),Lower is better,LEACH,1.650,1.157,29.888
+Avg AoI (rounds),Lower is better,EA-LEACH,3.985,0.657,83.515
+Hazardous success rate,Higher is better,LEACH,0.955,0.998,4.575
+Hazardous packets delivered,Higher is better,LEACH,811.400,2128.975,162.383

@@ -1,0 +1,61 @@
+{
+  "data": {
+    "feature_columns": [
+      "pm25",
+      "pm10",
+      "co",
+      "no2",
+      "temperature",
+      "humidity",
+      "hour_sin",
+      "hour_cos"
+    ],
+    "horizon": 1,
+    "hotspot_centers": [
+      [
+        25.0,
+        75.0
+      ],
+      [
+        55.0,
+        45.0
+      ],
+      [
+        80.0,
+        80.0
+      ]
+    ],
+    "real_csv_path": "data/raw/air_quality.csv",
+    "synthetic_output_path": "data/processed/synthetic_pollution_timeseries.csv",
+    "target_column": "pm25",
+    "training_steps": 240,
+    "use_real_if_available": true,
+    "window_size": 12
+  },
+  "data_source": "synthetic",
+  "model": {
+    "batch_size": 64,
+    "channel_size": 32,
+    "dropout": 0.1,
+    "epochs": 12,
+    "kernel_size": 3,
+    "learning_rate": 0.003,
+    "num_blocks": 3,
+    "train_fraction": 0.7,
+    "val_fraction": 0.15,
+    "weight_decay": 0.0001
+  },
+  "seed": 7,
+  "severity": {
+    "pm25_thresholds": {
+      "normal_max": 50.0,
+      "warning_max": 100.0
+    }
+  },
+  "split_sizes": {
+    "test_sequences": 5040,
+    "train_sequences": 22896,
+    "val_sequences": 4896
+  },
+  "training_rows": 34560
+}

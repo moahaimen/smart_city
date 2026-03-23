@@ -1,6 +1,39 @@
 seed: 7
 output_root: results
 
+study:
+  seeds:
+    - 7
+    - 11
+    - 13
+    - 17
+    - 19
+    - 23
+    - 29
+    - 31
+    - 37
+    - 41
+  confidence_level: 0.95
+  main_protocols:
+    - standard_leach
+    - energy_aware_leach
+    - tcn_predictive_pollution_aware_leach
+  main_scenarios:
+    - normal
+    - rising_warning
+    - hazardous_spike
+    - hotspot_heavy
+  ablation_protocols:
+    - full_tcn_ppa_leach
+    - no_tcn_prediction
+    - no_aoi_term
+    - no_suppression
+    - no_priority_scheduler
+  ablation_scenarios:
+    - rising_warning
+    - hazardous_spike
+    - hotspot_heavy
+
 data:
   use_real_if_available: true
   real_csv_path: data/raw/air_quality.csv
@@ -129,4 +162,4 @@ scenarios:
 protocols:
   - standard_leach
   - energy_aware_leach
-  - predictive_pollution_aware_leach
+  - tcn_predictive_pollution_aware_leach

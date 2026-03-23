@@ -22,6 +22,7 @@ def main() -> None:
     results_dirs = prepare_results_dirs(config.get("output_root", "results"))
     result = train_predictor(config, results_dirs, int(config["seed"]))
     print(f"Saved TCN checkpoint to {result['bundle'].checkpoint_path}")
+    print(f"Saved validation metrics to {results_dirs['logs'] / 'test_metrics.json'}")
     print(f"Regression metrics: {result['regression_metrics']}")
     print(f"Classification metrics: {result['classification_metrics']}")
 

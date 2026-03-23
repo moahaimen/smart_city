@@ -6,11 +6,20 @@ import numpy as np
 
 from src.simulation.priority import cluster_head_score
 from src.simulation.types import NodeRoundContext, NodeState
+from src.utils.naming import protocol_label
 
 
 @dataclass
 class ProtocolBase:
     name: str
+    short_name: str
+    cluster_head_rule: str
+    join_rule: str
+    uses_prediction: bool = False
+    uses_aoi_term: bool = False
+    uses_suppression: bool = False
+    uses_priority_scheduler: bool = False
+    priority_scoring_enabled: bool = False
 
     def select_cluster_heads(
         self,
@@ -55,7 +64,12 @@ class ProtocolBase:
 
 class StandardLEACHProtocol(ProtocolBase):
     def __init__(self) -> None:
-        super().__init__(name="standard_leach")
+        super().__init__(
+            name="standard_leach",
+            short_name=protocol_label("standard_leach"),
+            cluster_head_rule="probabilistic_leach",
+            join_rule="nearest_cluster_head",
+        )
 
     def select_cluster_heads(self, node_states: dict[int, NodeState], contexts: dict[int, NodeRoundContext], round_index: int, network_config: dict, rng: np.random.Generator) -> list[int]:
         eligible = [node_id for node_id, state in node_states.items() if state.alive and state.cooldown <= 0]
@@ -74,7 +88,12 @@ class StandardLEACHProtocol(ProtocolBase):
 
 class EnergyAwareLEACHProtocol(ProtocolBase):
     def __init__(self) -> None:
-        super().__init__(name="energy_aware_leach")
+        super().__init__(
+            name="energy_aware_leach",
+            short_name=protocol_label("energy_aware_leach"),
+            cluster_head_rule="energy_distance_ranking",
+            join_rule="nearest_cluster_head",
+        )
 
     def select_cluster_heads(self, node_states: dict[int, NodeState], contexts: dict[int, NodeRoundContext], round_index: int, network_config: dict, rng: np.random.Generator) -> list[int]:
         eligible = [node_id for node_id, state in node_states.items() if state.alive and state.cooldown <= 0]
@@ -95,9 +114,26 @@ class EnergyAwareLEACHProtocol(ProtocolBase):
         return ranked[:target_count]
 
 
-class PredictivePollutionAwareLEACHProtocol(ProtocolBase):
-    def __init__(self) -> None:
-        super().__init__(name="predictive_pollution_aware_leach")
+class TCNPredictivePollutionAwareLEACHProtocol(ProtocolBase):
+    def __init__(
+        self,
+        name: str = "tcn_predictive_pollution_aware_leach",
+        uses_prediction: bool = True,
+        uses_aoi_term: bool = True,
+        uses_suppression: bool = True,
+        uses_priority_scheduler: bool = True,
+    ) -> None:
+        super().__init__(
+            name=name,
+            short_name=protocol_label(name),
+            cluster_head_rule="energy_priority_distance",
+            join_rule="cost_based_priority_join",
+            uses_prediction=uses_prediction,
+            uses_aoi_term=uses_aoi_term,
+            uses_suppression=uses_suppression,
+            uses_priority_scheduler=uses_priority_scheduler,
+            priority_scoring_enabled=True,
+        )
 
     def select_cluster_heads(self, node_states: dict[int, NodeState], contexts: dict[int, NodeRoundContext], round_index: int, network_config: dict, rng: np.random.Generator) -> list[int]:
         eligible = [node_id for node_id, state in node_states.items() if state.alive and state.cooldown <= 0]
@@ -153,6 +189,8 @@ class PredictivePollutionAwareLEACHProtocol(ProtocolBase):
         return best_cluster
 
     def should_transmit(self, context: NodeRoundContext, network_config: dict) -> bool:
+        if not self.uses_suppression:
+            return True
         suppression = network_config["suppression"]
         if context.current_severity == 3 or context.predicted_severity == 3:
             return True
@@ -164,6 +202,8 @@ class PredictivePollutionAwareLEACHProtocol(ProtocolBase):
         return not (low_change and low_priority and low_aoi)
 
     def transmission_order(self, node_ids: list[int], contexts: dict[int, NodeRoundContext]) -> list[int]:
+        if not self.uses_priority_scheduler:
+            return super().transmission_order(node_ids, contexts)
         return sorted(
             node_ids,
             key=lambda node_id: (
@@ -180,6 +220,16 @@ def build_protocol(name: str) -> ProtocolBase:
         return StandardLEACHProtocol()
     if name == "energy_aware_leach":
         return EnergyAwareLEACHProtocol()
-    if name == "predictive_pollution_aware_leach":
-        return PredictivePollutionAwareLEACHProtocol()
+    if name == "tcn_predictive_pollution_aware_leach":
+        return TCNPredictivePollutionAwareLEACHProtocol(name=name)
+    if name == "full_tcn_ppa_leach":
+        return TCNPredictivePollutionAwareLEACHProtocol(name=name)
+    if name == "no_tcn_prediction":
+        return TCNPredictivePollutionAwareLEACHProtocol(name=name, uses_prediction=False)
+    if name == "no_aoi_term":
+        return TCNPredictivePollutionAwareLEACHProtocol(name=name, uses_aoi_term=False)
+    if name == "no_suppression":
+        return TCNPredictivePollutionAwareLEACHProtocol(name=name, uses_suppression=False)
+    if name == "no_priority_scheduler":
+        return TCNPredictivePollutionAwareLEACHProtocol(name=name, uses_priority_scheduler=False)
     raise ValueError(f"Unsupported protocol: {name}")

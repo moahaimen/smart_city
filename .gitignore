@@ -4,6 +4,8 @@ __pycache__/
 .type
 
 outputs/
+.mplconfig/
+/figures/
 results/logs/mplconfig/
 results/logs/cache/
 
@@ -11,9 +13,15 @@ leach_python.mat
 leach_python_headless_test.mat
 leach_python_test.mat
 leach_python_test.png
-
-results/models/gru_regressor.pt
-results/tables/gru_*.csv
-results/figures/gru_*.png
+figure1_tcn_ppa_leach_architecture_final.pdf
+figure1_tcn_ppa_leach_architecture_final.png
 
 data/processed/scenarios/sensitivity_energy_08.csv
+data/processed/scenarios/sensitivity_*/
+data/processed/scenarios/main_comparisons/
+data/processed/scenarios/ablation/
+
+results/figures/*.pdf
+results/sensitivity_analysis/
+results/sensitivity_analysis_minimal/
+results/paper_figures_section5/

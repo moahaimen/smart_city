@@ -16,6 +16,8 @@ class ScenarioData:
     rounds: int
     node_count: int
     area_size: float
+    topology_seed: int
+    traffic_seed: int
     frame: pd.DataFrame
     node_metadata: pd.DataFrame
     feature_columns: list[str]
@@ -250,18 +252,20 @@ def build_scenario_bundle(config: dict, seed: int) -> dict[str, ScenarioData]:
         node_count = int(scenario_cfg["node_count"])
         area_size = float(scenario_cfg["area_size"])
         total_steps = rounds + data_config["window_size"] + data_config["horizon"]
+        topology_seed = seed + 1000 + index * 17
+        traffic_seed = seed + 2000 + index * 19
         metadata = generate_node_metadata(
             node_count=node_count,
             area_size=area_size,
             hotspot_centers=data_config["hotspot_centers"],
-            seed=seed + 1000 + index * 17,
+            seed=topology_seed,
         )
         frame = generate_scenario_timeseries(
             scenario_name=scenario_name,
             node_metadata=metadata,
             total_steps=total_steps,
             area_size=area_size,
-            seed=seed + 2000 + index * 19,
+            seed=traffic_seed,
         )
         scenarios[scenario_cfg["name"]] = ScenarioData(
             name=scenario_cfg["name"],
@@ -269,6 +273,8 @@ def build_scenario_bundle(config: dict, seed: int) -> dict[str, ScenarioData]:
             rounds=rounds,
             node_count=node_count,
             area_size=area_size,
+            topology_seed=topology_seed,
+            traffic_seed=traffic_seed,
             frame=frame,
             node_metadata=metadata,
             feature_columns=list(data_config["feature_columns"]),
